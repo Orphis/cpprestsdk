@@ -35,8 +35,13 @@ _PPLXIMP void YieldExecution() { std::this_thread::yield(); }
 
 _PPLXIMP void linux_scheduler::schedule(TaskProc_t proc, void* param)
 {
+#if BOOST_VERSION >= 106600  // Boost 1.66+
     boost::asio::post(
-        crossplat::threadpool::shared_instance().service().get_executor(), [proc, param]() { proc(param); } );
+        crossplat::threadpool::shared_instance().service().get_executor(), [proc, param]() { proc(param); }
+    );
+#else
+    crossplat::threadpool::shared_instance().service().post(boost::bind(proc, param));
+#endif
 }
 
 } // namespace details
