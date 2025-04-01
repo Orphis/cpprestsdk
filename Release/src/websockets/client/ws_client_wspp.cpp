@@ -49,6 +49,7 @@
 #include <websocketpp/client.hpp>
 #include <websocketpp/config/asio_client.hpp>
 #include <websocketpp/config/asio_no_tls_client.hpp>
+#include <boost/version.hpp>
 
 #if defined(_WIN32)
 #pragma warning(pop)
@@ -225,7 +226,11 @@ public:
                             verifyCtx, utility::conversions::to_utf8string(m_uri.host()));
                     }
 #endif
+#if BOOST_VERSION >= 108700
+                    boost::asio::ssl::host_name_verification rfc2818(utility::conversions::to_utf8string(m_uri.host()));
+#else
                     boost::asio::ssl::rfc2818_verification rfc2818(utility::conversions::to_utf8string(m_uri.host()));
+#endif
                     return rfc2818(preverified, verifyCtx);
                 });
 

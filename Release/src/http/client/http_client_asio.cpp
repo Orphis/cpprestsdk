@@ -146,14 +146,14 @@ class asio_connection
     friend class asio_client;
 
 public:
-    asio_connection(boost::asio::io_service& io_service)
+    asio_connection(boost::asio::io_context& io_context)
         : m_socket_lock()
-        , m_socket(io_service)
+        , m_socket(io_context)
         , m_ssl_stream()
-        , m_cn_hostname()
-        , m_is_reused(false)
+        , m_cn_hostname()              
+        , m_is_reused(false)                                      
         , m_keep_alive(true)
-        , m_closed(false)
+        , m_closed(false)                      
     {
     }
 
@@ -581,10 +581,8 @@ public:
 
             m_context->m_timer.start();
 
-            tcp::resolver::query query(utility::conversions::to_utf8string(proxy_host), to_string(proxy_port));
-
             auto client = std::static_pointer_cast<asio_client>(m_context->m_http_client);
-            m_context->m_resolver.async_resolve(query,
+            m_context->m_resolver.async_resolve(utility::conversions::to_utf8string(proxy_host), to_string(proxy_port),
                                                 boost::bind(&ssl_proxy_tunnel::handle_resolve,
                                                             shared_from_this(),
                                                             boost::asio::placeholders::error,
@@ -592,7 +590,7 @@ public:
         }
 
     private:
-        void handle_resolve(const boost::system::error_code& ec, tcp::resolver::iterator endpoints)
+        void handle_resolve(const boost::system::error_code& ec, tcp::resolver::results_type endpoints)
         {
             if (ec)
             {
@@ -601,16 +599,19 @@ public:
             else
             {
                 m_context->m_timer.reset();
-                auto endpoint = *endpoints;
+                auto endpoint_it = endpoints.begin();
+                auto endpoint = *endpoint_it;
                 m_context->m_connection->async_connect(endpoint,
-                                                       boost::bind(&ssl_proxy_tunnel::handle_tcp_connect,
-                                                                   shared_from_this(),
-                                                                   boost::asio::placeholders::error,
-                                                                   ++endpoints));
+                                              boost::bind(&ssl_proxy_tunnel::handle_tcp_connect,
+                                                          shared_from_this(),
+                                                          boost::asio::placeholders::error,
+                                                          ++endpoint_it, endpoints.end()));
             }
         }
 
-        void handle_tcp_connect(const boost::system::error_code& ec, tcp::resolver::iterator endpoints)
+        void handle_tcp_connect(const boost::system::error_code& ec,
+            tcp::resolver::results_type::iterator endpoint_it,
+            tcp::resolver::results_type::iterator endpoints_end)
         {
             if (!ec)
             {
@@ -621,7 +622,7 @@ public:
                                                                  shared_from_this(),
                                                                  boost::asio::placeholders::error));
             }
-            else if (endpoints == tcp::resolver::iterator())
+            else if (endpoint_it == endpoints_end)
             {
                 m_context->report_error(
                     "Failed to connect to any resolved proxy endpoint", ec, httpclient_errorcode_context::connect);
@@ -641,12 +642,12 @@ public:
                     return;
                 }
 
-                auto endpoint = *endpoints;
+                auto endpoint = *endpoint_it;
                 m_context->m_connection->async_connect(endpoint,
                                                        boost::bind(&ssl_proxy_tunnel::handle_tcp_connect,
                                                                    shared_from_this(),
                                                                    boost::asio::placeholders::error,
-                                                                   ++endpoints));
+                                                                   ++endpoint_it, endpoints_end));
             }
         }
 
@@ -885,8 +886,7 @@ public:
                 auto tcp_host = proxy_type == http_proxy_type::http ? proxy_host : host;
                 auto tcp_port = proxy_type == http_proxy_type::http ? proxy_port : port;
 
-                tcp::resolver::query query(tcp_host, to_string(tcp_port));
-                ctx->m_resolver.async_resolve(query,
+                ctx->m_resolver.async_resolve(utility::conversions::to_utf8string(proxy_host), to_string(proxy_port),
                                               boost::bind(&asio_context::handle_resolve,
                                                           ctx,
                                                           boost::asio::placeholders::error,
@@ -1006,7 +1006,9 @@ private:
         request_context::report_error(errorcodeValue, message);
     }
 
-    void handle_connect(const boost::system::error_code& ec, tcp::resolver::iterator endpoints)
+    void handle_connect(const boost::system::error_code& ec, 
+        tcp::resolver::results_type::iterator endpoint_it,
+        tcp::resolver::results_type::iterator endpoints_end)
     {
         m_timer.reset();
         if (!ec)
@@ -1019,7 +1021,7 @@ private:
         {
             report_error("Request canceled by user.", ec, httpclient_errorcode_context::connect);
         }
-        else if (endpoints == tcp::resolver::iterator())
+        else if (endpoint_it == endpoints_end)
         {
             report_error("Failed to connect to any resolved endpoint", ec, httpclient_errorcode_context::connect);
         }
@@ -1037,32 +1039,33 @@ private:
                 return;
             }
 
-            auto endpoint = *endpoints;
+            auto endpoint = *endpoint_it;
             m_connection->async_connect(
                 endpoint,
                 boost::bind(
-                    &asio_context::handle_connect, shared_from_this(), boost::asio::placeholders::error, ++endpoints));
+                    &asio_context::handle_connect, shared_from_this(), boost::asio::placeholders::error, ++endpoint_it, endpoints_end));
         }
     }
 
-    void handle_resolve(const boost::system::error_code& ec, tcp::resolver::iterator endpoints)
+    void handle_resolve(const boost::system::error_code& ec, tcp::resolver::results_type endpoints)
     {
         if (ec)
         {
             report_error("Error resolving address", ec, httpclient_errorcode_context::connect);
         }
-        else if (endpoints == tcp::resolver::iterator())
+        else if (endpoints.empty())
         {
             report_error("Failed to resolve address", ec, httpclient_errorcode_context::connect);
         }
         else
         {
             m_timer.reset();
-            auto endpoint = *endpoints;
+            auto endpoint_it = endpoints.begin();
+            auto endpoint = *endpoint_it;
             m_connection->async_connect(
                 endpoint,
                 boost::bind(
-                    &asio_context::handle_connect, shared_from_this(), boost::asio::placeholders::error, ++endpoints));
+                    &asio_context::handle_connect, shared_from_this(), boost::asio::placeholders::error, ++endpoint_it, endpoints.end()));
         }
     }
 
@@ -1134,7 +1137,11 @@ private:
         }
 #endif // CPPREST_PLATFORM_ASIO_CERT_VERIFICATION_AVAILABLE
 
+#if BOOST_VERSION >= 108700
+        boost::asio::ssl::host_name_verification rfc2818(m_connection->cn_hostname());
+#else
         boost::asio::ssl::rfc2818_verification rfc2818(m_connection->cn_hostname());
+#endif
         return rfc2818(preverified, verifyCtx);
     }
 
@@ -1182,8 +1189,8 @@ private:
 
         const auto& chunkSize = m_http_client->client_config().chunksize();
         auto readbuf = _get_readbuffer();
-        uint8_t* buf = boost::asio::buffer_cast<uint8_t*>(
-            m_body_buf.prepare(chunkSize + http::details::chunked_encoding::additional_encoding_space));
+        uint8_t* buf = static_cast<uint8_t*>(
+            m_body_buf.prepare(chunkSize + http::details::chunked_encoding::additional_encoding_space).data());
         const auto this_request = shared_from_this();
         readbuf.getn(buf + http::details::chunked_encoding::data_offset, chunkSize)
             .then([this_request, buf, chunkSize AND_CAPTURE_MEMBER_FUNCTION_POINTERS](pplx::task<size_t> op) {
@@ -1247,7 +1254,7 @@ private:
         const auto readSize = static_cast<size_t>((std::min)(
             static_cast<uint64_t>(m_http_client->client_config().chunksize()), m_content_length - m_uploaded));
         auto readbuf = _get_readbuffer();
-        readbuf.getn(boost::asio::buffer_cast<uint8_t*>(m_body_buf.prepare(readSize)), readSize)
+        readbuf.getn(static_cast<uint8_t*>(m_body_buf.prepare(readSize).data()), readSize)
             .then([this_request AND_CAPTURE_MEMBER_FUNCTION_POINTERS](pplx::task<size_t> op) {
                 try
                 {
@@ -1639,7 +1646,7 @@ private:
                     std::vector<uint8_t> decompressed;
 
                     bool boo =
-                        decompress(boost::asio::buffer_cast<const uint8_t*>(m_body_buf.data()), to_read, decompressed);
+                        decompress(static_cast<const uint8_t*>(m_body_buf.data().data()), to_read, decompressed);
                     if (!boo)
                     {
                         report_exception(std::runtime_error("Failed to decompress the response body"));
@@ -1687,7 +1694,7 @@ private:
                 }
                 else
                 {
-                    writeBuffer.putn_nocopy(boost::asio::buffer_cast<const uint8_t*>(m_body_buf.data()), to_read)
+                    writeBuffer.putn_nocopy(static_cast<const uint8_t*>(m_body_buf.data().data()), to_read)
                         .then([this_request, to_read AND_CAPTURE_MEMBER_FUNCTION_POINTERS](pplx::task<size_t> op) {
                             try
                             {
@@ -1759,7 +1766,7 @@ private:
                 std::vector<uint8_t> decompressed;
 
                 bool boo =
-                    decompress(boost::asio::buffer_cast<const uint8_t*>(m_body_buf.data()), read_size, decompressed);
+                    decompress(static_cast<const uint8_t*>(m_body_buf.data().data()), read_size, decompressed);
                 if (!boo)
                 {
                     this_request->report_exception(std::runtime_error("Failed to decompress the response body"));
@@ -1821,7 +1828,7 @@ private:
             }
             else
             {
-                writeBuffer.putn_nocopy(boost::asio::buffer_cast<const uint8_t*>(m_body_buf.data()), read_size)
+                writeBuffer.putn_nocopy(static_cast<const uint8_t*>(m_body_buf.data().data()), read_size)
                     .then([this_request AND_CAPTURE_MEMBER_FUNCTION_POINTERS](pplx::task<size_t> op) {
                         size_t writtenSize = 0;
                         try
@@ -1870,7 +1877,7 @@ private:
             assert(!m_ctx.expired());
             m_state = started;
 
-            m_timer.expires_from_now(m_duration);
+            m_timer.expires_after(m_duration);
             auto ctx = m_ctx;
             m_timer.async_wait([ctx AND_CAPTURE_MEMBER_FUNCTION_POINTERS](const boost::system::error_code& ec) {
                 handle_timeout(ec, ctx);
@@ -1881,7 +1888,7 @@ private:
         {
             assert(m_state == started || m_state == timedout);
             assert(!m_ctx.expired());
-            if (m_timer.expires_from_now(m_duration) > 0)
+            if (m_timer.expires_after(m_duration) > 0)
             {
                 // The existing handler was canceled so schedule a new one.
                 assert(m_state == started);

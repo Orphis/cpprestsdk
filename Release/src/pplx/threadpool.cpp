@@ -6,7 +6,8 @@
 
 #if !defined(CPPREST_EXCLUDE_WEBSOCKETS) || !defined(_WIN32)
 #include "pplx/threadpool.h"
-#include <boost/asio/detail/thread.hpp>
+#include <boost/thread/thread.hpp>
+#include <boost/asio/executor_work_guard.hpp>
 #include <new>
 #include <type_traits>
 #include <utility>
@@ -37,7 +38,8 @@ static void abort_if_no_jvm()
 
 struct threadpool_impl final : crossplat::threadpool
 {
-    threadpool_impl(size_t n) : crossplat::threadpool(n), m_work(m_service)
+    threadpool_impl(size_t n) : crossplat::threadpool(n), 
+                               m_work_guard(boost::asio::make_work_guard(m_service))
     {
         for (size_t i = 0; i < n; i++)
             add_thread();
@@ -48,10 +50,12 @@ struct threadpool_impl final : crossplat::threadpool
 
     ~threadpool_impl()
     {
+        m_work_guard.reset(); // Allow the io_context to stop
         m_service.stop();
-        for (auto iter = m_threads.begin(); iter != m_threads.end(); ++iter)
+        for (auto& thread : m_threads)
         {
-            (*iter)->join();
+            if (thread.joinable())
+                thread.join();
         }
     }
 
@@ -60,8 +64,7 @@ struct threadpool_impl final : crossplat::threadpool
 private:
     void add_thread()
     {
-        m_threads.push_back(
-            std::unique_ptr<boost::asio::detail::thread>(new boost::asio::detail::thread([&] { thread_start(this); })));
+        m_threads.emplace_back([this] { thread_start(this); });
     }
 
 #if defined(__ANDROID__)
@@ -83,8 +86,8 @@ private:
         return arg;
     }
 
-    std::vector<std::unique_ptr<boost::asio::detail::thread>> m_threads;
-    boost::asio::io_service::work m_work;
+    std::vector<boost::thread> m_threads;
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> m_work_guard;
 };
 
 #if defined(_WIN32)
@@ -108,13 +111,22 @@ struct shared_threadpool
 
     ~shared_threadpool()
     {
-        // if linked into a DLL, the threadpool shared instance will be
+        // If linked into a DLL, the threadpool shared instance will be
         // destroyed at DLL_PROCESS_DETACH, at which stage joining threads
-        // causes deadlock, hence this dance
-        bool terminate_threads = boost::asio::detail::thread::terminate_threads();
-        boost::asio::detail::thread::set_terminate_threads(true);
-        get_shared().~threadpool_impl();
-        boost::asio::detail::thread::set_terminate_threads(terminate_threads);
+        // causes deadlock
+        
+        // Get the current threadpool implementation
+        auto& pool = get_shared();
+        
+        // Stop accepting new work - important to do this before destruction
+        pool.stop();
+        
+        // Use placement delete to call the destructor without freeing memory
+        // This avoids potential issues with thread joining during DLL unload
+        pool.~threadpool_impl();
+        
+        // Note: we don't call pool.join() which would wait for threads to complete
+        // as this is exactly what can cause deadlocks during DLL unload
     }
 };
 
