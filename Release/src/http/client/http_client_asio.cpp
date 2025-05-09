@@ -586,7 +586,7 @@ public:
                                                 boost::bind(&ssl_proxy_tunnel::handle_resolve,
                                                             shared_from_this(),
                                                             boost::asio::placeholders::error,
-                                                            boost::asio::placeholders::iterator));
+                                                            boost::asio::placeholders::results));
         }
 
     private:
@@ -886,11 +886,11 @@ public:
                 auto tcp_host = proxy_type == http_proxy_type::http ? proxy_host : host;
                 auto tcp_port = proxy_type == http_proxy_type::http ? proxy_port : port;
 
-                ctx->m_resolver.async_resolve(utility::conversions::to_utf8string(proxy_host), to_string(proxy_port),
+                ctx->m_resolver.async_resolve(utility::conversions::to_utf8string(tcp_host), to_string(tcp_port),
                                               boost::bind(&asio_context::handle_resolve,
                                                           ctx,
                                                           boost::asio::placeholders::error,
-                                                          boost::asio::placeholders::iterator));
+                                                          boost::asio::placeholders::results));
             }
 
             // Register for notification on cancellation to abort this request.
