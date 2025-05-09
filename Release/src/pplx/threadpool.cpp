@@ -111,22 +111,13 @@ struct shared_threadpool
 
     ~shared_threadpool()
     {
-        // If linked into a DLL, the threadpool shared instance will be
+        // if linked into a DLL, the threadpool shared instance will be
         // destroyed at DLL_PROCESS_DETACH, at which stage joining threads
-        // causes deadlock
-        
-        // Get the current threadpool implementation
-        auto& pool = get_shared();
-        
-        // Stop accepting new work - important to do this before destruction
-        pool.stop();
-        
-        // Use placement delete to call the destructor without freeing memory
-        // This avoids potential issues with thread joining during DLL unload
-        pool.~threadpool_impl();
-        
-        // Note: we don't call pool.join() which would wait for threads to complete
-        // as this is exactly what can cause deadlocks during DLL unload
+        // causes deadlock, hence this dance
+        bool terminate_threads = boost::asio::detail::thread::terminate_threads();
+        boost::asio::detail::thread::set_terminate_threads(true);
+        get_shared().~threadpool_impl();
+        boost::asio::detail::thread::set_terminate_threads(terminate_threads);
     }
 };
 
