@@ -439,7 +439,7 @@ private:
             _CharType* beg = rbegin();
             _CharType* end = rbegin() + countRead;
 
-#if defined(_ITERATOR_DEBUG_LEVEL) && _ITERATOR_DEBUG_LEVEL != 0
+#if defined(_ITERATOR_DEBUG_LEVEL) && _ITERATOR_DEBUG_LEVEL != 0 && _MSC_VER < 1930
             // Avoid warning C4996: Use checked iterators under SECURE_SCL
             std::copy(beg, end, stdext::checked_array_iterator<_CharType*>(dest, count));
 #else
@@ -462,7 +462,7 @@ private:
 
             const _CharType* srcEnd = src + countWritten;
 
-#if defined(_ITERATOR_DEBUG_LEVEL) && _ITERATOR_DEBUG_LEVEL != 0
+#if defined(_ITERATOR_DEBUG_LEVEL) && _ITERATOR_DEBUG_LEVEL != 0 && _MSC_VER < 1930
             // Avoid warning C4996: Use checked iterators under SECURE_SCL
             std::copy(src, srcEnd, stdext::checked_array_iterator<_CharType*>(wbegin(), static_cast<size_t>(avail)));
 #else
