@@ -12,11 +12,21 @@ namespace utility {
 
 namespace detail {
 
+template <typename T> struct IntTypeFor {
+    typedef typename std::conditional<std::is_unsigned<T>::value, unsigned long long int, long long int>::type type;
+};
+template <> struct IntTypeFor<char> {
+    typedef typename std::char_traits<char>::int_type type;
+};
+template <> struct IntTypeFor<unsigned char> {
+    typedef typename std::make_unsigned<typename std::char_traits<char>::int_type>::type type;
+};
+
 template <typename T> class DetailCharTraits
 {
 public:
     using char_type  = T;
-    using int_type   = std::char_traits<char>::int_type;
+    using int_type   = typename IntTypeFor<T>::type;
     using off_type   = std::streamoff;
     using pos_type   = std::streampos;
     using state_type = mbstate_t;

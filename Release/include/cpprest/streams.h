@@ -73,20 +73,36 @@ struct Value2StringFormatter
     }
 };
 
-template<>
-struct Value2StringFormatter<uint8_t>
+template<typename T>
+struct Value2StringFormatterUint8Format
 {
-    template<typename T>
-    static std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType> format(const T& val)
+    std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType> operator () (const T& val)
     {
         std::basic_ostringstream<char> ss;
         ss << val;
         return reinterpret_cast<const uint8_t*>(ss.str().c_str());
     }
+};
 
-    template <> std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType> format<std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType>>(const std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType> &val)
+template <>
+struct Value2StringFormatterUint8Format<std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType>>
+{
+    std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType> operator () (
+        const std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType>& val)
     {
-        return format(reinterpret_cast<const std::basic_string<char> &>(val));
+        Value2StringFormatterUint8Format<std::basic_string<char>> format;
+        return format(reinterpret_cast<const std::basic_string<char>&>(val));
+    }
+};
+
+template<>
+struct Value2StringFormatter<uint8_t>
+{
+    template <typename T>
+    static std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType> format(const T& val)
+    {
+        Value2StringFormatterUint8Format<T> format;
+        return format(val);
     }
 
     static std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType> format(const utf16string& val)
@@ -108,7 +124,7 @@ template<typename CharType>
 class basic_ostream
 {
 public:
-    typedef typename utility::CanUseStdCharTraits<CharType>::TraitsType traits;
+    typedef char_traits<CharType> traits;
     typedef typename traits::int_type int_type;
     typedef typename traits::pos_type pos_type;
     typedef typename traits::off_type off_type;
