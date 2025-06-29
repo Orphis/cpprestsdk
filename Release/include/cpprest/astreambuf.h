@@ -15,6 +15,7 @@
 
 #include "cpprest/asyncrt_utils.h"
 #include "cpprest/details/basic_types.h"
+#include "cpprest/details/char_traits.h"
 #include "pplx/pplxtasks.h"
 #include <atomic>
 #include <cstring>
@@ -57,16 +58,16 @@ namespace streams
 /// The data type of the basic element of the stream.
 /// </typeparam>
 template<typename _CharType>
-struct char_traits : std::char_traits<_CharType>
+struct char_traits : utility::CanUseStdCharTraits<_CharType>::TraitsType
 {
     /// <summary>
     /// Some synchronous functions will return this value if the operation
     /// requires an asynchronous call in a given situation.
     /// </summary>
     /// <returns>An <c>int_type</c> value which implies that an asynchronous call is required.</returns>
-    static typename std::char_traits<_CharType>::int_type requires_async()
+    static typename utility::CanUseStdCharTraits<_CharType>::TraitsType::int_type requires_async()
     {
-        return std::char_traits<_CharType>::eof() - 1;
+        return utility::CanUseStdCharTraits<_CharType>::TraitsType::eof() - 1;
     }
 };
 #if !defined(_WIN32)

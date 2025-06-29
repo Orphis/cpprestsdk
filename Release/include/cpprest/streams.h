@@ -16,6 +16,7 @@
 #define CASA_STREAMS_H
 
 #include "cpprest/astreambuf.h"
+#include "cpprest/details/char_traits.h"
 #include <iosfwd>
 #include <cstdio>
 
@@ -64,97 +65,31 @@ template<typename CharType>
 struct Value2StringFormatter
 {
     template<typename T>
-    static std::basic_string<CharType> format(const T& val)
+    static std::basic_string<CharType, typename utility::CanUseStdCharTraits<CharType>::TraitsType> format(const T& val)
     {
-        std::basic_ostringstream<CharType> ss;
+        std::basic_ostringstream<CharType, typename utility::CanUseStdCharTraits<CharType>::TraitsType> ss;
         ss << val;
         return ss.str();
     }
 };
 
-template <typename T> class DetailCharTraits
-{
-public:
-    using char_type  = T;
-    using int_type   = unsigned int;
-    using off_type   = std::streamoff;
-    using pos_type   = std::streampos;
-    using state_type = mbstate_t;
-
-    static void assign(char_type& r, const char_type& a) noexcept { r = a; }
-    static char_type to_char_type(int_type c) noexcept { return char_type(c); }
-    static int_type  to_int_type(char_type c) noexcept { return c; }
-    static bool eq(char_type a, char_type b) noexcept { return a == b; }
-    static bool lt(char_type a, char_type b) noexcept { return a <  b; }
-    static int compare(const char_type* s1,const char_type* s2,size_t n){
-        for (; n--; ++s1, ++s2) {
-            if (!eq(*s1, *s2))
-                return lt(*s1,*s2)?-1:1;
-        }
-        return 0;
-    }
-    static size_t length(const char_type* s){
-        const char_type* p = s;
-        while (*p)
-            ++p;
-        return size_t(p - s);
-    }
-    static const char_type* find(const char_type* s,size_t n,const char_type& a){
-        for (; n--; ++s)
-        {
-            if (eq(*s, a))
-                return s;
-            return nullptr;
-        }
-    }
-    static char_type* move (char_type* r,const char_type* s,size_t n){
-        return (char_type*)memmove(r, s, n * sizeof(char_type));
-    }
-    static char_type* copy (char_type* r,const char_type* s,size_t n){
-        return (char_type*)memcpy (r, s, n * sizeof(char_type));
-    }
-    static char_type* assign(char_type* r,size_t n,char_type a){
-        if (sizeof(char_type) == 1)
-        {
-            return (char_type*)memset(r, a, n);
-        }
-        else
-        {
-            for (char_type *s = r; n--; ++s)
-            {
-                *s = a;
-            }
-        }
-    }
-    static int_type  eof() noexcept { return ~0u; }
-    static int_type  not_eof(int_type c) noexcept { return c == eof() ? 0 : c; }
-};
-
-template <typename T, typename = bool> struct CanUseStdCharTraits : public std::false_type
-{
-public:
-    typedef DetailCharTraits<T> TraitsType;
-};
-
-template <typename T> struct CanUseStdCharTraits<T, decltype(std::char_traits<T>::eq(std::declval<T>(), std::declval<T>()))> : public std::true_type
-{
-public:
-    typedef std::char_traits<T> TraitsType;
-};
-
-
 template<>
 struct Value2StringFormatter<uint8_t>
 {
     template<typename T>
-    static std::basic_string<uint8_t, CanUseStdCharTraits<uint8_t>::TraitsType> format(const T& val)
+    static std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType> format(const T& val)
     {
         std::basic_ostringstream<char> ss;
         ss << val;
         return reinterpret_cast<const uint8_t*>(ss.str().c_str());
     }
 
-    static std::basic_string<uint8_t, CanUseStdCharTraits<uint8_t>::TraitsType> format(const utf16string& val)
+    template <> std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType> format<std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType>>(const std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType> &val)
+    {
+        return format(reinterpret_cast<const std::basic_string<char> &>(val));
+    }
+
+    static std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType> format(const utf16string& val)
     {
         return format(utility::conversions::utf16_to_utf8(val));
     }
@@ -173,7 +108,7 @@ template<typename CharType>
 class basic_ostream
 {
 public:
-    typedef char_traits<CharType> traits;
+    typedef typename utility::CanUseStdCharTraits<CharType>::TraitsType traits;
     typedef typename traits::int_type int_type;
     typedef typename traits::pos_type pos_type;
     typedef typename traits::off_type off_type;
@@ -333,7 +268,7 @@ public:
     /// Write the specified string to the output stream.
     /// </summary>
     /// <param name="str">Input string.</param>
-    pplx::task<size_t> print(const std::basic_string<CharType>& str) const
+    pplx::task<size_t> print(const std::basic_string<CharType,traits>& str) const
     {
         pplx::task<size_t> result;
         if (!_verify_and_return_task(details::_out_stream_msg, result)) return result;
@@ -344,7 +279,7 @@ public:
         }
         else
         {
-            auto sharedStr = std::make_shared<std::basic_string<CharType>>(str);
+            auto sharedStr = std::make_shared<std::basic_string<CharType,traits>>(str);
             return helper()->m_buffer.putn_nocopy(sharedStr->c_str(), sharedStr->size()).then([sharedStr](size_t size) {
                 return size;
             });
