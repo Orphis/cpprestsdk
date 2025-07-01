@@ -61,22 +61,66 @@ private:
     concurrency::streams::streambuf<CharType> m_buffer;
 };
 
-template<typename CharType>
+template<typename CharType, class Traits = typename utility::CanUseStdCharTraits<CharType>::TraitsType>
 struct Value2StringFormatter
 {
-    template<typename T>
-    static std::basic_string<CharType, typename utility::CanUseStdCharTraits<CharType>::TraitsType> format(const T& val)
+    struct SanitizeInput
     {
-        std::basic_ostringstream<CharType, typename utility::CanUseStdCharTraits<CharType>::TraitsType> ss;
-        ss << val;
-        return ss.str();
+        const std::basic_string<char> &operator () (const std::basic_string<char> &input)
+        {
+            return input;
+        }
+        template <class InputTraits> std::basic_string<char> operator () (const std::basic_string<unsigned char, InputTraits> &input)
+        {
+            return {reinterpret_cast<const char *>(input.c_str()), input.size()};
+        }
+        const char *operator () (const char *input) {
+            return input;
+        }
+        const char *operator () (const unsigned char *input)
+        {
+            return reinterpret_cast<const char *>(input);
+        }
+        template <class T> T operator () (T input)
+        {
+            return input;
+        }
+    };
+    struct GenerateFormatOutput
+    {
+        std::basic_string<CharType,Traits> &&operator() (std::basic_string<CharType,Traits> &&result)
+        {
+            return std::move(result);
+        }
+        std::basic_string<CharType,Traits> operator() (const std::basic_string<char> &intermediate)
+        {
+            return {reinterpret_cast<const CharType *>(intermediate.c_str()), intermediate.size()};
+        }
+    };
+    template<typename T>
+    static std::basic_string<CharType, Traits> format(const T& val)
+    {
+        typename std::conditional<
+            sizeof(CharType) == 1,
+            std::basic_ostringstream<char>,
+            std::basic_ostringstream<typename std::make_signed<CharType>::type>
+        >::type ss;
+        SanitizeInput sanitizer;
+        ss << sanitizer(val);
+        typename std::conditional<
+            sizeof(CharType) == 1,
+            std::basic_string<char>,
+            std::basic_string<typename std::make_signed<CharType>::type>
+        >::type str = ss.str();
+        GenerateFormatOutput generateFormatOutput;
+        return generateFormatOutput(std::move(str));
     }
 };
 
-template<typename T>
+template<class Traits, typename T>
 struct Value2StringFormatterUint8Format
 {
-    std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType> operator () (const T& val)
+    std::basic_string<uint8_t, Traits> operator () (const T& val)
     {
         std::basic_ostringstream<char> ss;
         ss << val;
@@ -84,13 +128,13 @@ struct Value2StringFormatterUint8Format
     }
 };
 
-template <>
-struct Value2StringFormatterUint8Format<std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType>>
+template <class Traits>
+struct Value2StringFormatterUint8Format<Traits, std::basic_string<uint8_t,Traits>>
 {
-    std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType> operator () (
+    std::basic_string<uint8_t, Traits> operator () (
         const std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType>& val)
     {
-        Value2StringFormatterUint8Format<std::basic_string<char>> format;
+        Value2StringFormatterUint8Format<Traits,std::basic_string<char>> format;
         return format(reinterpret_cast<const std::basic_string<char>&>(val));
     }
 };
@@ -98,10 +142,10 @@ struct Value2StringFormatterUint8Format<std::basic_string<uint8_t, typename util
 template<>
 struct Value2StringFormatter<uint8_t>
 {
-    template <typename T>
-    static std::basic_string<uint8_t, typename utility::CanUseStdCharTraits<uint8_t>::TraitsType> format(const T& val)
+    template <typename T, class Traits = typename utility::CanUseStdCharTraits<uint8_t>::TraitsType>
+    static std::basic_string<uint8_t, Traits> format(const T& val)
     {
-        Value2StringFormatterUint8Format<T> format;
+        Value2StringFormatterUint8Format<Traits, T> format;
         return format(val);
     }
 
@@ -316,7 +360,7 @@ public:
         if (!_verify_and_return_task(details::_out_stream_msg, result)) return result;
         // TODO in the future this could be improved to have Value2StringFormatter avoid another unnecessary copy
         // by putting the string on the heap before calling the print string overload.
-        return print(details::Value2StringFormatter<CharType>::format(val));
+        return print(details::Value2StringFormatter<CharType, traits>::format(val));
     }
 
     /// <summary>
