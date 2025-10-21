@@ -1576,7 +1576,7 @@ public:
     }
 
     template<typename E>
-    static void CastThrow(bool b, T& t) SAFEINT_CPP_THROW
+    static void CastThrow(T t, bool& b) SAFEINT_CPP_THROW
     {
         b = !!t;
     }

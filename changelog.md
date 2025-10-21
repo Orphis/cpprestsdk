@@ -1,3 +1,26 @@
+cpprestsdk (2.10.19)
+* PR#1982 make Uri.is_host_loopback() only return true for localhost and 127.0.0.1 exactly. 
+  The old behavior could potentially return "true" for URLs that were not, in fact, local,
+  and this could cause security issues if is_host_loopback was used in certain ways.
+* PR#1711 Fix likely typo in SafeInt3.hpp, that results in error with clang 15
+* PR#1496 Support for oauth2 with "client_credentials" grant type.
+* PR#1429 Add constructor from all integer types for json value.
+* PR#1577 export http_exception for non Windows builds using visibility macros.
+
+cpprestsdk (2.10.18)
+* PR#1571 Add ability to parse and emit the NT Epoch 1601-01-01T00:00:00Z
+* PR#1571 Update vcpkg submodule
+* Update CI configuration
+-- cpprestsdk team MON, 1 Feb 2021 20:02:00 -0700
+
+cpprestsdk (2.10.17)
+* PR#1550 Fix year calculation for the last day of a leap year
+* PR#1523 Fix wrong linking of Apple Frameworks on MacOS
+* PR#1520 Define __STDC_FORMAT_MACROS when it hasn't been defined to avoid duplicate define error. 
+* PR#1415 Delete apparently broken .vcxprojs and .pfxes.
+* Removed defunct email contact information from the readme
+-- cpprestsdk team WED, 30 Dec 2020 20:08:00 -0700
+
 cpprestsdk (2.10.16)
 * PR#1383 CMake fixes + CMake search for OpenSSL (macOS)
 * PR#1392 Update submodule websocketpp to 0.8.2
