@@ -846,13 +846,13 @@ std::unique_ptr<compress_provider> get_compressor_from_header(
     const std::vector<std::shared_ptr<compress_factory>>& f =
         factories.empty() ? web::http::compression::builtin::g_compress_factories : factories;
     std::unique_ptr<compress_provider> compressor;
-    struct _tuple
+    struct tokens_tuple
     {
         size_t start;
         size_t length;
         size_t rank;
     } t;
-    std::vector<_tuple> tokens;
+    std::vector<tokens_tuple> tokens;
     size_t highest;
     size_t mark;
     size_t end;
